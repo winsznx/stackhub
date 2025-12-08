@@ -1,0 +1,16 @@
+{
+    "name": "StacksHub",
+    "short_name": "StacksHub",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#000000",
+    "theme_color": "#000000",
+    "description": "The Bitcoin Superapp on Stacks",
+    "icons": [
+        {
+            "src": "/logo.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ]
+}
