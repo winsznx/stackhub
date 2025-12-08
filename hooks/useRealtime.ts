@@ -23,5 +23,5 @@ export function useRealtime(conversationId?: string) {
 
     }, [conversationId, socket]);
 
-    return { sendMessage };
+    return { sendMessage, socket };
 }
