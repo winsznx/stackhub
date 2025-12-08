@@ -3,8 +3,8 @@ import { StacksTestnet, StacksMainnet } from '@stacks/network';
 import { PostConditionMode, Pc } from '@stacks/transactions';
 import { getUserSession } from './stacks-client';
 
-const CONTRACT_ADDRESS_TESTNET = 'ST31DP8F8CF2GXSZBHHHK5J6Y061744E1TP7FRGHT';
-const CONTRACT_ADDRESS_MAINNET = 'SP1...'; // To be deployed
+export const CONTRACT_ADDRESS_TESTNET = 'ST31DP8F8CF2GXSZBHHHK5J6Y061744E1TP7FRGHT';
+const CONTRACT_ADDRESS_MAINNET = 'SP31DP8F8CF2GXSZBHHHK5J6Y061744E1TP7FRGHT'; // Placeholder
 
 export const CONTRACTS = {
   TESTNET: {
@@ -29,20 +29,7 @@ export async function mintAvatar(networkType: 'testnet' | 'mainnet' = 'testnet')
   const contractAddress = networkType === 'mainnet' ? CONTRACT_ADDRESS_MAINNET : CONTRACT_ADDRESS_TESTNET;
   const userAddress = userSession.loadUserData().profile.stxAddress[networkType];
 
-  // Define Post Condition: User transfers 100 STX to Contract Owner (Deployer)
-  // Since we don't know the exact deployer in all cases/envs, we can use allow mode OR specific PC if we know.
-  // The contract transfers 100 STX from sender to owner.
-  // If sender == owner, it's a self transfer.
-  // We'll use a Standard STX Post Condition.
-
-  // Use willSendLte to handle both:
-  // 1. Normal users sending 100 STX to the owner.
-  // 2. The owner minting (sending 100 STX to themselves), which Stacks registers as 0 sent.
   const postCondition = Pc.principal(userAddress).willSendLte(100000000).ustx();
-
-  // Ensure we are passing the explicit address we expect to sign with
-  // This helps the wallet select the correct account if multiple are present
-  // or prevents using a Mainnet address for a Testnet transaction
 
   return new Promise((resolve, reject) => {
     openContractCall({
@@ -51,7 +38,7 @@ export async function mintAvatar(networkType: 'testnet' | 'mainnet' = 'testnet')
       functionName: 'mint',
       functionArgs: [],
       network,
-      stxAddress: userAddress, // Force wallet to use this address
+      stxAddress: userAddress,
       postConditions: [postCondition],
       postConditionMode: PostConditionMode.Deny,
       userSession,
@@ -62,7 +49,11 @@ export async function mintAvatar(networkType: 'testnet' | 'mainnet' = 'testnet')
 }
 
 export function generateSip010Contract(name: string, symbol: string, decimals: number, supply: number, uri: string) {
-  // Basic SIP-010 template
+  // Hardcoded Launchpad addresses for permissions
+  // In a real generic generator, this would be a parameter.
+  const LAUNCHPAD_TESTNET = `${CONTRACT_ADDRESS_TESTNET}.launchpad`;
+  const LAUNCHPAD_MAINNET = `${CONTRACT_ADDRESS_MAINNET}.launchpad`;
+
   return `
 ;; ${name} Token
 (impl-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
@@ -108,8 +99,20 @@ export function generateSip010Contract(name: string, symbol: string, decimals: n
 
 (define-public (mint (amount uint) (recipient principal))
   (begin
-    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    ;; Allow Contract Owner OR Launchpad to mint
+    (asserts! (or (is-eq tx-sender contract-owner) (is-eq tx-sender '${LAUNCHPAD_TESTNET}') (is-eq tx-sender '${LAUNCHPAD_MAINNET}')) err-owner-only)
     (ft-mint? ${symbol.toLowerCase()} amount recipient)
+  )
+)
+
+(define-public (burn (amount uint) (sender principal))
+  (begin
+    ;; Allow Contract Owner OR Launchpad to burn from AUTHORIZED sender
+    ;; The Launchpad will call this. We need to trust the Launchpad.
+    ;; Ideally Launchpad uses 'transfer' to itself then burns, but 'burn' from user is fine if user checks via Launchpad
+    ;; Actually, standard SIP-010 doesn't have public burn. But our custom trait requires it.
+    (asserts! (or (is-eq tx-sender contract-owner) (is-eq tx-sender '${LAUNCHPAD_TESTNET}') (is-eq tx-sender '${LAUNCHPAD_MAINNET}')) err-owner-only)
+    (ft-burn? ${symbol.toLowerCase()} amount sender)
   )
 )
   `;

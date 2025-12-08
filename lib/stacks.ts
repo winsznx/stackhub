@@ -58,3 +58,35 @@ export async function getStxBalance(address: string, networkType: 'mainnet' | 't
         return 0;
     }
 }
+
+import { fetchCallReadOnlyFunction, cvToJSON, ClarityValue } from '@stacks/transactions';
+
+export async function readContract(
+    contractAddress: string,
+    contractName: string,
+    functionName: string,
+    functionArgs: ClarityValue[],
+    networkType: 'mainnet' | 'testnet' = 'testnet'
+) {
+    const networkObj = networkType === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
+
+    // Polyfill fetch for Stacks.js if needed in browser environment
+    if (!networkObj.fetchFn) {
+        networkObj.fetchFn = fetch;
+    }
+
+    try {
+        const result = await fetchCallReadOnlyFunction({
+            contractAddress,
+            contractName,
+            functionName,
+            functionArgs,
+            network: networkObj as any,
+            senderAddress: contractAddress // Reader can be anyone, usually use contract address or random
+        });
+        return cvToJSON(result);
+    } catch (e) {
+        console.error(`Error reading contract ${contractName}.${functionName}:`, e);
+        throw e;
+    }
+}

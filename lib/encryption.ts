@@ -1,5 +1,7 @@
-import { encryptContent, decryptContent } from '@stacks/encryption';
+import { encryptContent, decryptContent, getPublicKeyFromPrivate } from '@stacks/encryption';
 import { UserSession } from '@stacks/connect';
+
+export { getPublicKeyFromPrivate };
 
 // Helper to get public key from user session (if available) or profile
 // Note: In a real app, you'd fetch the recipient's public key from their BNS profile or a directory.
