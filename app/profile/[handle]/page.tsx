@@ -6,13 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs"
 import { Badge } from "@/ui/badge"
 import { AvatarMint } from "@/components/profile/avatar-mint";
-import { Copy, ExternalLink, MessageSquare, Settings, Wallet, Sparkles } from "lucide-react"
+import { Copy, ExternalLink, MessageSquare, Settings, Wallet, Sparkles, ShieldCheck } from "lucide-react"
 import Link from "next/link"
-import { resolveBnsName, truncateAddress, getStxBalance } from "@/lib/stacks"
+import { resolveBnsName, truncateAddress, getStxBalance, readContract } from "@/lib/stacks"
 import { getSbtcBalance } from "@/lib/sbtc"
 import { SatTribute } from "@/components/wallet/sat-tribute"
 
-import { fetchCallReadOnlyFunction, cvToJSON, uintCV } from "@stacks/transactions"
+import { fetchCallReadOnlyFunction, cvToJSON, uintCV, contractPrincipalCV } from "@stacks/transactions"
 import { StacksMainnet, StacksTestnet } from "@stacks/network"
 import { env } from "@/lib/config"
 import { CONTRACTS } from "@/lib/contracts"
@@ -40,6 +40,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     const [displayName, setDisplayName] = useState<string>(handle);
     const [sbtcBalance, setSbtcBalance] = useState<number>(0);
     const [stxBalance, setStxBalance] = useState<number>(0);
+    const [reputation, setReputation] = useState<number>(0);
     const [userNfts, setUserNfts] = useState<number[]>([]);
     const [recentActivity, setRecentActivity] = useState<TransactionActivity[]>([]);
 
@@ -69,6 +70,23 @@ export default function ProfilePage({ params }: ProfilePageProps) {
             const stx = await getStxBalance(resolvedAddress, 'testnet');
             setStxBalance(stx);
 
+            // Fetch Reputation
+            try {
+                const [repAddr, repName] = CONTRACTS.TESTNET.REPUTATION.split('.');
+                const repData = await readContract(
+                    repAddr,
+                    repName,
+                    'get-reputation',
+                    [contractPrincipalCV(resolvedAddress)],
+                    'testnet'
+                );
+                if (repData && repData.value) {
+                    setReputation(parseInt(repData.value.value));
+                }
+            } catch (e) {
+                console.log("Failed to fetch reputation", e);
+            }
+
             // Fetch User NFTs
             fetchUserNfts(resolvedAddress);
 
@@ -77,6 +95,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         };
 
         const fetchUserNfts = async (ownerAddress: string) => {
+            // ... existing code ...
             // In a real implementation with a standard NFT contract, we would query the balance or a specific map.
             // Our simple contract doesn't have an easy "get-all-tokens-for-owner" function without an indexer.
             // However, for this demo/hackathon scope, we can assume the specific NFT contract `stacks-hub-avatars` uses SIP-009.
@@ -164,6 +183,13 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                                         }}>
                                             <Copy className="h-3 w-3" />
                                         </Button>
+
+                                        {reputation > 0 && (
+                                            <Badge variant="secondary" className="gap-1 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-500/20">
+                                                <ShieldCheck className="h-3 w-3" />
+                                                Reputation: {reputation}
+                                            </Badge>
+                                        )}
                                     </div>
                                     <p className="text-base text-muted-foreground mt-4 max-w-2xl leading-relaxed">
                                         Building on Bitcoin layers. StacksHub Explorer.
