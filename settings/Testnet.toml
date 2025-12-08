@@ -1,0 +1,7 @@
+# Testnet settings
+[network]
+name = "testnet"
+endpoint = "https://api.testnet.hiro.so"
+
+[accounts.deployer]
+mnemonic = "PUT_YOUR_MNEMONIC_HERE"
