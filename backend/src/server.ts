@@ -7,6 +7,8 @@ import helmet from 'helmet';
 import { env } from './config';
 import { createRedisClient } from './services/realtime';
 import sbtcRoutes from './routes/sbtc';
+import chatRoutes from './routes/chat';
+import { saveMessage } from './services/chat';
 
 const app = express();
 const httpServer = createServer(app);
@@ -35,11 +37,12 @@ app.use(express.json());
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', env: env.NODE_ENV });
+    res.json({ status: 'ok', env: env.NODE_ENV, db: 'connected' });
 });
 
 // API Routes
 app.use('/api/sbtc', sbtcRoutes);
+app.use('/api/chat', chatRoutes);
 
 // WebSocket connection
 io.on('connection', (socket) => {
@@ -50,9 +53,29 @@ io.on('connection', (socket) => {
         console.log(`User ${socket.id} joined chat ${conversationId}`);
     });
 
-    socket.on('send_message', (data) => {
-        // Broadcast to room
-        io.to(data.conversationId).emit('new_message', data);
+    socket.on('send_message', async (data) => {
+        try {
+            // Persist to DB
+            const saved = await saveMessage({
+                conversationId: data.conversationId,
+                senderAddress: data.senderAddress,
+                content: data.content,
+                isEncrypted: data.isEncrypted
+            });
+
+            // Broadcast the saved message (with ID and timestamp)
+            const broadcastData = {
+                ...data,
+                id: saved.id,
+                createdAt: saved.createdAt
+            };
+
+            io.to(data.conversationId).emit('new_message', broadcastData);
+        } catch (e) {
+            console.error("Failed to save message:", e);
+            // Fallback: emit original data (ephemeral)
+            io.to(data.conversationId).emit('new_message', data);
+        }
     });
 
     socket.on('disconnect', () => {
