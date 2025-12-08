@@ -4,14 +4,74 @@ import { useEffect, useState, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/ui/avatar";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
-import { MoreVertical, Phone, Send, Video, Paperclip, Smile } from "lucide-react";
+import { MoreVertical, Phone, Send, Video, Paperclip, Smile, Lock, Unlock, Key } from "lucide-react";
 import { useChatStore } from '@/store/useChatStore';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useWallet } from '@/hooks/useWallet';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { encryptMessage, decryptMessage, getPublicKeyFromPrivate } from '@/lib/encryption';
+import { getUserSession } from '@/lib/stacks-client';
+import { Message } from '@/types/message';
+import { UserSession } from '@stacks/connect';
+import { env } from '@/lib/config';
 
 interface ActiveChatProps {
     conversationId: string;
+}
+
+const HANDSHAKE_PREFIX = '::HANDSHAKE::';
+
+// Component to handle decryption of individual messages
+function MessageBubble({ msg, userSession, isMe }: { msg: Message, userSession: UserSession | null, isMe: boolean }) {
+    const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
+    const [isDecrypting, setIsDecrypting] = useState(false);
+
+    useEffect(() => {
+        let mounted = true;
+        const decrypt = async () => {
+            if (msg.isEncrypted && userSession && !isMe) {
+                // If I sent it, I should have stored the plaintext? 
+                // Or I double-encrypted? For now, assume I can't read my own sent encrypted messages unless I stored them.
+                // But the store has them. Wait, if I refresh, the store persists the *original* plaintext for me? 
+                // No, the store persists what was added.
+                // When we SEND, we add plaintext to store, but emit ENCRYPTED.
+                // So for "Me", we always have plaintext.
+                // For "Them", we receive encrypted.
+                setIsDecrypting(true);
+                const decrypted = await decryptMessage(msg.content, userSession);
+                if (mounted) {
+                    setDecryptedContent(decrypted);
+                    setIsDecrypting(false);
+                }
+            }
+        };
+
+        if (msg.isEncrypted && !isMe) {
+            decrypt();
+        } else {
+            setDecryptedContent(msg.content);
+        }
+
+        return () => { mounted = false; };
+    }, [msg, userSession, isMe]);
+
+    const displayContent = isMe ? msg.content : (msg.isEncrypted ? (decryptedContent || "🔒 Decrypting...") : msg.content);
+    const isLocked = msg.isEncrypted;
+
+    return (
+        <div className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-sm relative group ${isMe
+            ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white rounded-br-sm shadow-orange-500/20'
+            : 'glass-card rounded-bl-sm'
+            }`}>
+            <p className="text-sm leading-relaxed flex items-center gap-2">
+                {isLocked && <Lock className="h-3 w-3 opacity-70" />}
+                {displayContent}
+            </p>
+            <p className={`text-[10px] mt-1.5 text-right ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
+                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+        </div>
+    );
 }
 
 export function ActiveChat({ conversationId }: ActiveChatProps) {
@@ -19,13 +79,70 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
     const { user } = useWallet();
     const [inputValue, setInputValue] = useState('');
     const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const [recipientPublicKey, setRecipientPublicKey] = useState<string | null>(null);
+    const [myPublicKey, setMyPublicKey] = useState<string | null>(null);
 
-    const { sendMessage } = useRealtime(conversationId);
+    const { sendMessage, socket } = useRealtime(conversationId);
+    const userSession = getUserSession();
 
     const currentMessages = messages[conversationId] || [];
     const displayName = conversationId.startsWith('SP') ? 'muneeb.btc' : conversationId;
 
-    // Auto-scroll to bottom on new message
+    // Derive My Public Key on Mount
+    useEffect(() => {
+        if (userSession.isUserSignedIn()) {
+            const userData = userSession.loadUserData();
+            const appPrivateKey = userData.appPrivateKey;
+            if (appPrivateKey) {
+                const pubKey = getPublicKeyFromPrivate(appPrivateKey);
+                setMyPublicKey(pubKey);
+            }
+        }
+    }, []);
+
+    // Handshake: Emit Key on Join
+    useEffect(() => {
+        if (socket?.connected && myPublicKey && conversationId) {
+            // Send Handshake
+            const handshake = JSON.stringify({
+                type: 'HANDSHAKE',
+                publicKey: myPublicKey
+            });
+            // We send this as a "message" but prefix it so UI knows to hide it
+            sendMessage(conversationId, {
+                id: Date.now().toString(),
+                senderAddress: user?.address || '',
+                recipientAddress: conversationId,
+                content: HANDSHAKE_PREFIX + handshake,
+                timestamp: Date.now(),
+                isEncrypted: false,
+                status: 'sent'
+            });
+        }
+    }, [socket?.connected, myPublicKey, conversationId]);
+
+    // Listen for Handshakes in Message Stream
+    useEffect(() => {
+        // Scan existing messages for handshake from the OTHER person
+        // In a real app, we'd use a dedicated 'handshake' event or a presence system.
+        // Here we tunnel through messages.
+        const otherMessages = currentMessages.filter(m => m.senderAddress === conversationId || m.senderAddress !== user?.address);
+        for (const m of otherMessages) {
+            if (m.content.startsWith(HANDSHAKE_PREFIX)) {
+                try {
+                    const payload = JSON.parse(m.content.substring(HANDSHAKE_PREFIX.length));
+                    if (payload.type === 'HANDSHAKE' && payload.publicKey) {
+                        setRecipientPublicKey(payload.publicKey);
+                        // Once found, we break (assuming latest key is what we want, or first found)
+                        // Actually, if they rotate keys, we want latest. But for now, first valid is fine.
+                        break;
+                    }
+                } catch (e) { }
+            }
+        }
+    }, [currentMessages, conversationId, user?.address]);
+
+    // Auto-scroll
     useEffect(() => {
         if (virtuosoRef.current) {
             virtuosoRef.current.scrollToIndex({
@@ -40,20 +157,46 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
         e.preventDefault();
         if (!inputValue.trim() || !user) return;
 
-        const newMessage = {
+        let contentToSend = inputValue;
+        let isEncrypted = false;
+
+        // E2EE Logic
+        if (recipientPublicKey) {
+            try {
+                const encrypted = await encryptMessage(inputValue, recipientPublicKey);
+                contentToSend = encrypted;
+                isEncrypted = true;
+            } catch (error) {
+                console.error("Encryption failed, sending plaintext", error);
+            }
+        }
+
+        const newMessage: Message = {
             id: Date.now().toString(),
             senderAddress: user.address || '',
             recipientAddress: conversationId,
-            content: inputValue,
+            content: contentToSend,
             timestamp: Date.now(),
-            isEncrypted: false,
-            status: 'sent' as const
+            isEncrypted: isEncrypted,
+            status: 'sent'
         };
 
-        addMessage(conversationId, newMessage);
+        // Optimistic UI: Add PLAINTEXT to our own store so we can read it
+        const optimisticMessage: Message = {
+            ...newMessage,
+            content: inputValue, // Store plaintext for myself
+            isEncrypted: isEncrypted // Maintain flag so we show Lock icon
+        };
+
+        addMessage(conversationId, optimisticMessage);
+
+        // Send ENCRYPTED over the wire
         sendMessage(conversationId, newMessage);
         setInputValue('');
     };
+
+    // Filter out Handshake messages from UI
+    const visibleMessages = currentMessages.filter(m => !m.content.startsWith(HANDSHAKE_PREFIX));
 
     return (
         <div className="flex flex-col h-full bg-background relative overflow-hidden">
@@ -67,7 +210,14 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
                         <AvatarFallback>{displayName[0]?.toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
-                        <h3 className="font-semibold text-sm">{displayName}</h3>
+                        <h3 className="font-semibold text-sm flex items-center gap-2">
+                            {displayName}
+                            {recipientPublicKey ? (
+                                <span title="End-to-End Encrypted" className="text-green-500"><Lock className="h-3 w-3" /></span>
+                            ) : (
+                                <span title="Not Encrypted" className="text-amber-500"><Unlock className="h-3 w-3" /></span>
+                            )}
+                        </h3>
                         <div className="flex items-center gap-1.5">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -92,7 +242,7 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
 
             {/* Messages (Virtual List) */}
             <div className="flex-1 p-4 md:p-6 min-h-0">
-                {currentMessages.length === 0 ? (
+                {visibleMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center space-y-4 animate-in fade-in zoom-in duration-500">
                         <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
                             <Smile className="h-8 w-8 text-primary/50" />
@@ -100,30 +250,25 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
                         <div className="space-y-1">
                             <p className="font-medium">No messages yet</p>
                             <p className="text-sm text-muted-foreground">Start the conversation with a wave! 👋</p>
+                            {!recipientPublicKey && (
+                                <p className="text-xs text-amber-500 flex items-center justify-center gap-1">
+                                    <Key className="h-3 w-3" /> Waiting for secure key exchange...
+                                </p>
+                            )}
                         </div>
                     </div>
                 ) : (
                     <Virtuoso
                         ref={virtuosoRef}
                         style={{ height: '100%' }}
-                        data={currentMessages}
+                        data={visibleMessages}
                         followOutput
-                        initialTopMostItemIndex={currentMessages.length - 1}
+                        initialTopMostItemIndex={visibleMessages.length - 1}
                         itemContent={(index, msg) => {
                             const isMe = msg.senderAddress === user?.address;
                             return (
                                 <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} pb-6 px-1`}>
-                                    <div
-                                        className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-sm relative group ${isMe
-                                            ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white rounded-br-sm shadow-orange-500/20'
-                                            : 'glass-card rounded-bl-sm'
-                                            }`}
-                                    >
-                                        <p className="text-sm leading-relaxed">{msg.content}</p>
-                                        <p className={`text-[10px] mt-1.5 text-right ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
-                                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </p>
-                                    </div>
+                                    <MessageBubble msg={msg} userSession={userSession} isMe={isMe} />
                                 </div>
                             );
                         }}
@@ -141,15 +286,15 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
                         <Input
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            placeholder="Type a message..."
+                            placeholder={recipientPublicKey ? "Type a secure message..." : "Type a message (unencrypted)..."}
                             className="flex-1 border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 min-h-[40px] placeholder:text-muted-foreground/50"
                         />
                         <div className="flex gap-1">
                             <Button type="button" size="icon" variant="ghost" className="text-muted-foreground hover:text-primary h-10 w-10 shrink-0 rounded-xl">
                                 <Smile className="h-5 w-5" />
                             </Button>
-                            <Button type="submit" size="icon" className="h-10 w-10 shrink-0 rounded-xl shadow-md bg-primary hover:bg-primary/90 text-white" disabled={!inputValue.trim()}>
-                                <Send className="h-4 w-4" />
+                            <Button type="submit" size="icon" className={`h-10 w-10 shrink-0 rounded-xl shadow-md text-white ${recipientPublicKey ? 'bg-green-600 hover:bg-green-700' : 'bg-primary hover:bg-primary/90'}`} disabled={!inputValue.trim()}>
+                                {recipientPublicKey ? <Lock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                             </Button>
                         </div>
                     </form>
