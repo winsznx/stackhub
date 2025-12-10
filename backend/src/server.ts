@@ -8,6 +8,7 @@ import { env } from './config';
 import { createRedisClient } from './services/realtime';
 import sbtcRoutes from './routes/sbtc';
 import chatRoutes from './routes/chat';
+import userRoutes from './routes/user';
 import { saveMessage } from './services/chat';
 
 const app = express();
@@ -43,6 +44,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/sbtc', sbtcRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/users', userRoutes);
 
 // WebSocket connection
 io.on('connection', (socket) => {
