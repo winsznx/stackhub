@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   title: "StacksHub | The Bitcoin Superapp",
   description: "Chat, trade, and launch tokens on Stacks. Fully on-chain and encrypted.",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/orange_logo.svg",
+    shortcut: "/orange_logo.svg",
+    apple: "/orange_logo.svg",
+  },
 };
 
 import { SiteHeader } from "@/components/site-header";
