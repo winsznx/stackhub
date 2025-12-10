@@ -37,10 +37,27 @@ export default function SettingsPage() {
 
     useEffect(() => {
         if (user) {
-            setDisplayName(user.address || '');
+            setDisplayName(user.address || ''); // Default
             fetchMyAvatars();
+            fetchUserProfile(); // Fetch real profile
         }
     }, [user]);
+
+    const fetchUserProfile = async () => {
+        if (!user?.address) return;
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/users/${user.address}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.displayName) setDisplayName(data.displayName);
+                if (data.bio) setBio(data.bio);
+                // We could sync avatarUrl to store here too if we had access to setUser, 
+                // but useWallet only gives us user.
+            }
+        } catch (e) {
+            console.error("Failed to fetch profile", e);
+        }
+    };
 
     const fetchMyAvatars = async () => {
         if (!user?.address) return;
@@ -67,16 +84,63 @@ export default function SettingsPage() {
         }
     };
 
+    const handleSetPfp = async (nft: NFT) => {
+        if (!user?.address) return;
+        const avatarUrl = `/avatars/${nft.value.repr.replace('u', '')}.svg`;
+
+        // Update via API
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    address: user.address,
+                    avatarUrl
+                })
+            });
+
+            toast({
+                title: "Avatar Updated",
+                description: "Your profile picture has been updated.",
+            });
+
+            // Force reload or update store (ideally)
+            // window.location.reload(); // Simple way to refresh app state for now
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to update avatar.",
+                variant: 'destructive'
+            });
+        }
+    };
+
     const handleSaveProfile = async () => {
         setIsLoading(true);
-        // Simulate saving to backend
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    address: user?.address,
+                    displayName,
+                    bio
+                })
+            });
 
-        toast({
-            title: "Profile Updated",
-            description: "Your profile settings have been saved.",
-        });
-        setIsLoading(false);
+            toast({
+                title: "Profile Updated",
+                description: "Your profile settings have been saved.",
+            });
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to save profile.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     if (!user?.isAuthenticated) {
@@ -173,7 +237,7 @@ export default function SettingsPage() {
                                                 />
                                             </div>
                                             <p className="font-mono text-sm">#{nft.value.repr.replace('u', '')}</p>
-                                            <Button size="sm" variant="outline" className="w-full">Set as PFP</Button>
+                                            <Button size="sm" variant="outline" className="w-full" onClick={() => handleSetPfp(nft)}>Set as PFP</Button>
                                         </div>
                                     ))}
                                 </div>
