@@ -16,20 +16,44 @@ export function useWallet() {
         const userSession = getUserSession();
         if (userSession.isUserSignedIn()) {
             const userData = userSession.loadUserData();
-            if (!user || user.address !== userData.profile.stxAddress.testnet) {
+            const address = userData.profile.stxAddress.testnet;
+
+            if (!user || user.address !== address) {
+                // Initial set
                 setUser({
-                    address: userData.profile.stxAddress.testnet,
-                    stxAddress: userData.profile.stxAddress.testnet,
+                    address: address,
+                    stxAddress: address,
                     btcName: null,
+                    avatarUrl: null,
                     isAuthenticated: true,
                 });
 
-                fetchBtcName(userData.profile.stxAddress.testnet, 'testnet').then((name) => {
+                fetchBtcName(address, 'testnet').then((name) => {
                     if (name) setBtcName(name);
                 });
             }
         }
     }, [user, setUser, setBtcName]);
+
+    // Fetch extended profile (Avatar/Bio)
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (user?.address) {
+                try {
+                    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/users/${user.address}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.avatarUrl && data.avatarUrl !== user.avatarUrl) {
+                            setUser({ ...user, avatarUrl: data.avatarUrl });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to sync profile", e);
+                }
+            }
+        };
+        fetchProfile();
+    }, [user?.address, setUser]);
 
     const connectWallet = useCallback(async () => {
         const appDetails = {
@@ -51,6 +75,7 @@ export function useWallet() {
                         address: userData.profile.stxAddress.testnet,
                         stxAddress: userData.profile.stxAddress.testnet,
                         btcName: null,
+                        avatarUrl: null,
                         isAuthenticated: true,
                     });
 
