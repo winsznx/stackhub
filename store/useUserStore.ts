@@ -5,6 +5,7 @@ interface UserSession {
     address: string;
     stxAddress: string; // Mainnet/Testnet specific
     btcName: string | null;
+    avatarUrl: string | null;
     isAuthenticated: boolean;
 }
 
