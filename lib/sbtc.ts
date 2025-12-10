@@ -1,7 +1,8 @@
 import { openContractCall } from '@stacks/connect';
 import { StacksTestnet, StacksMainnet } from '@stacks/network';
-import { uintCV, principalCV, stringAsciiCV, PostConditionMode, FungibleConditionCode, Pc, fetchCallReadOnlyFunction, cvToJSON, standardPrincipalCV } from '@stacks/transactions';
+import { uintCV, principalCV, stringAsciiCV, PostConditionMode, Pc, standardPrincipalCV } from '@stacks/transactions';
 import { getUserSession } from './stacks-client';
+import { readContract } from './stacks';
 
 // sBTC Contract Principals
 export const SBTC_CONTRACT_TESTNET = 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc-token';
@@ -68,23 +69,21 @@ export async function getSbtcBalance(address: string, networkType: 'mainnet' | '
         console.error('Error fetching sBTC balance from backend, falling back to direct node call:', error);
 
         // Fallback to direct node call if backend fails
-        const network = networkType === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
+        // Fallback to direct node call if backend fails
         const contractAddress = networkType === 'mainnet' ? SBTC_CONTRACT_MAINNET : SBTC_CONTRACT_TESTNET;
         const [contractPrincipal, contractName] = contractAddress.split('.');
 
         try {
-            const result = await fetchCallReadOnlyFunction({
-                contractAddress: contractPrincipal,
-                contractName: contractName,
-                functionName: 'get-balance',
-                functionArgs: [standardPrincipalCV(address)],
-                network: network as any,
-                senderAddress: address,
-            });
+            const result = await readContract(
+                contractPrincipal,
+                contractName,
+                'get-balance',
+                [standardPrincipalCV(address)],
+                networkType
+            );
 
-            const json = cvToJSON(result);
-            if (json.value) {
-                return parseInt(json.value.value);
+            if (result && result.value) {
+                return parseInt(result.value.value);
             }
             return 0;
         } catch (directError) {

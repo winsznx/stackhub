@@ -59,7 +59,7 @@ export async function getStxBalance(address: string, networkType: 'mainnet' | 't
     }
 }
 
-import { fetchCallReadOnlyFunction, cvToJSON, ClarityValue } from '@stacks/transactions';
+import { fetchCallReadOnlyFunction, cvToJSON, ClarityValue, cvToHex, deserializeCV } from '@stacks/transactions';
 
 export async function readContract(
     contractAddress: string,
@@ -68,23 +68,35 @@ export async function readContract(
     functionArgs: ClarityValue[],
     networkType: 'mainnet' | 'testnet' = 'testnet'
 ) {
-    const networkObj = networkType === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
-
-    // Polyfill fetch for Stacks.js if needed in browser environment
-    if (!networkObj.fetchFn) {
-        networkObj.fetchFn = fetch;
-    }
+    const baseUrl = networkType === 'mainnet'
+        ? 'https://api.mainnet.hiro.so'
+        : 'https://api.testnet.hiro.so';
 
     try {
-        const result = await fetchCallReadOnlyFunction({
-            contractAddress,
-            contractName,
-            functionName,
-            functionArgs,
-            network: networkObj as any,
-            senderAddress: contractAddress // Reader can be anyone, usually use contract address or random
+        // use direct API call to avoid @stacks/network v6 vs @stacks/transactions v7 conflict
+        const args = functionArgs.map(arg => cvToHex(arg));
+
+        const response = await fetch(`${baseUrl}/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sender: contractAddress,
+                arguments: args
+            })
         });
-        return cvToJSON(result);
+
+        if (!response.ok) {
+            throw new Error(`Read contract failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.okay && data.result) {
+            const resultCV = deserializeCV(data.result);
+            return cvToJSON(resultCV);
+        } else {
+            throw new Error(`Read contract returned error: ${JSON.stringify(data)}`);
+        }
     } catch (e) {
         console.error(`Error reading contract ${contractName}.${functionName}:`, e);
         throw e;
