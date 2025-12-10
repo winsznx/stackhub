@@ -3,7 +3,7 @@
 ;; Simple NFT Marketplace for StacksHub Avatars
 ;; Allows listing and buying of SIP-009 NFTs
 
-(use-trait sip009-nft-trait .sip009-nft-trait.sip009-nft-trait)
+(use-trait sip009-nft-trait .sip009-nft-trait-v4.sip009-nft-trait)
 
 (define-constant contract-owner tx-sender)
 (define-constant err-owner-only (err u100))
@@ -33,7 +33,10 @@
       (asserts! (> price u0) err-price-zero)
       
       ;; Transfer NFT to escrow (this contract)
-      (try! (contract-call? nft-contract transfer token-id tx-sender (as-contract tx-sender)))
+      ;; Get contract principal using as-contract?
+      (let ((contract-principal (unwrap-panic (as-contract? ((with-all-assets-unsafe)) tx-sender))))
+        (try! (contract-call? nft-contract transfer token-id tx-sender contract-principal))
+      )
       
       ;; Create listing
       (map-set listings token-id { price: price, seller: tx-sender })
@@ -54,8 +57,10 @@
       ;; Pay seller
       (try! (stx-transfer? price tx-sender seller))
       
-      ;; Transfer NFT to buyer
-      (try! (as-contract (contract-call? nft-contract transfer token-id tx-sender tx-sender)))
+      ;; Transfer NFT to buyer (contract sends to tx-sender)
+      (unwrap! (as-contract? ((with-all-assets-unsafe))
+          (try! (contract-call? nft-contract transfer token-id tx-sender tx-sender)))
+        (err u999))
       
       ;; Remove listing
       (map-delete listings token-id)
@@ -75,8 +80,10 @@
       ;; Verify seller is the one cancelling
       (asserts! (is-eq tx-sender seller) err-not-token-owner)
       
-      ;; Return NFT to seller
-      (try! (as-contract (contract-call? nft-contract transfer token-id tx-sender seller)))
+      ;; Return NFT to seller (contract sends to seller)
+      (unwrap! (as-contract? ((with-all-assets-unsafe))
+          (try! (contract-call? nft-contract transfer token-id tx-sender seller)))
+        (err u999))
       
       ;; Remove listing
       (map-delete listings token-id)

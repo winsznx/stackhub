@@ -3,7 +3,7 @@
 ;; SIP-009 NFT Contract for StacksHub Profile Avatars
 ;; Allows minting of 100 unique avatars to be used as profile pictures
 
-(impl-trait .sip009-nft-trait.sip009-nft-trait)
+(impl-trait .sip009-nft-trait-v4.sip009-nft-trait)
 
 ;; Constants
 (define-constant contract-owner tx-sender)
@@ -18,7 +18,9 @@
 
 ;; Data Vars
 (define-data-var last-token-id uint u0)
-(define-data-var base-uri (string-ascii 210) "/avatars/")
+
+;; Store explicit URIs for each token
+(define-map token-uris uint (string-ascii 256))
 
 ;; NFT Definition
 (define-non-fungible-token stackshub-avatar uint)
@@ -30,7 +32,7 @@
 )
 
 (define-read-only (get-token-uri (token-id uint))
-  (ok (as-max-len? (concat (concat (var-get base-uri) (uint-to-string token-id)) ".svg") u256))
+  (ok (map-get? token-uris token-id))
 )
 
 (define-read-only (get-owner (token-id uint))
@@ -38,7 +40,7 @@
 )
 
 ;; Minting Function
-(define-public (mint)
+(define-public (mint (uri (string-ascii 256)))
   (let
     (
       (next-id (+ (var-get last-token-id) u1))
@@ -54,6 +56,8 @@
     
     ;; Update state
     (var-set last-token-id next-id)
+    (map-set token-uris next-id uri)
+    
     (ok next-id)
   )
 )
@@ -66,37 +70,4 @@
   )
 )
 
-;; Admin functions
-(define-public (set-base-uri (new-uri (string-ascii 210)))
-  (begin
-    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
-    (var-set base-uri new-uri)
-    (ok true)
-  )
-)
 
-;; Helper to convert int to ascii (simplified for demo)
-;; Helper to convert uint to string (supports up to 999)
-(define-private (uint-to-string (value uint))
-  (if (<= value u9)
-    (get-digit value)
-    (if (<= value u99)
-      (unwrap-panic (as-max-len? (concat (get-digit (/ value u10)) (get-digit (mod value u10))) u2))
-      (unwrap-panic (as-max-len? (concat (unwrap-panic (as-max-len? (concat (get-digit (/ value u100)) (get-digit (/ (mod value u100) u10))) u2)) (get-digit (mod value u10))) u3))
-    )
-  )
-)
-
-(define-private (get-digit (i uint))
-  (if (is-eq i u0) "0"
-  (if (is-eq i u1) "1"
-  (if (is-eq i u2) "2"
-  (if (is-eq i u3) "3"
-  (if (is-eq i u4) "4"
-  (if (is-eq i u5) "5"
-  (if (is-eq i u6) "6"
-  (if (is-eq i u7) "7"
-  (if (is-eq i u8) "8"
-  (if (is-eq i u9) "9"
-  "0"))))))))))
-)

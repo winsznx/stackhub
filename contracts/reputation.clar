@@ -3,7 +3,7 @@
 ;; On-chain Reputation System for StacksHub
 ;; Tracks user activity and calculates a reputation score
 
-(use-trait sip010-ft-trait .sip010-ft-trait.sip010-ft-trait)
+(use-trait sip010-ft-trait .sip010-ft-trait-v4.sip010-ft-trait)
 
 (define-constant contract-owner tx-sender)
 (define-constant err-owner-only (err u100))
@@ -18,14 +18,31 @@
 )
 
 ;; Public functions (only callable by trusted contracts/admin in this version)
-;; Public functions (only callable by trusted contracts/admin in this version)
+;; Authorized Contractors (e.g. Launchpad)
+(define-map authorized-callers principal bool)
+
+(define-public (set-authorized (caller principal) (status bool))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (ok (map-set authorized-callers caller status))
+    )
+)
+
+(define-read-only (is-authorized-caller (caller principal))
+    (default-to false (map-get? authorized-callers caller))
+)
+
+;; Public functions
 (define-public (add-reputation (user principal) (points uint))
   (let
     (
       (current-score (get-reputation user))
+      (is-auth (is-authorized-caller tx-sender))
     )
     (begin
-      (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+      ;; Allow Owner OR Authorized Contracts
+      (asserts! (or (is-eq tx-sender contract-owner) is-auth) err-owner-only)
+      
       (map-set user-reputation user (+ current-score points))
       (ok true)
     )
