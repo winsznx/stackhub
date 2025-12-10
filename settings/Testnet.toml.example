@@ -1,0 +1,9 @@
+# Testnet settings template
+# Copy this file to Testnet.toml and add your seed phrase
+
+[network]
+name = "testnet"
+endpoint = "https://api.testnet.hiro.so"
+
+[accounts.deployer]
+mnemonic = "YOUR_12_OR_24_WORD_SEED_PHRASE_HERE"

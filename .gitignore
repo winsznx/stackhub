@@ -43,3 +43,12 @@ next-env.d.ts
 # Backend
 backend/dist/
 
+# Clarinet settings (contains seed phrases and private keys)
+settings/Testnet.toml
+settings/Mainnet.toml
+settings/*.toml
+!settings/Devnet.toml
+
+# Clarinet cache
+.cache/
+
