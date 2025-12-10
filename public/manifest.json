@@ -8,7 +8,7 @@
     "description": "The Bitcoin Superapp on Stacks",
     "icons": [
         {
-            "src": "/logo.svg",
+            "src": "/orange_logo.svg",
             "sizes": "any",
             "type": "image/svg+xml"
         }
