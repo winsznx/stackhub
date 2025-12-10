@@ -12,7 +12,7 @@ import { resolveBnsName, truncateAddress, getStxBalance, readContract } from "@/
 import { getSbtcBalance } from "@/lib/sbtc"
 import { SatTribute } from "@/components/wallet/sat-tribute"
 
-import { fetchCallReadOnlyFunction, cvToJSON, uintCV, contractPrincipalCV } from "@stacks/transactions"
+import { cvToJSON, uintCV, contractPrincipalCV, principalCV } from "@stacks/transactions"
 import { StacksMainnet, StacksTestnet } from "@stacks/network"
 import { env } from "@/lib/config"
 import { CONTRACTS } from "@/lib/contracts"
@@ -42,6 +42,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     const [stxBalance, setStxBalance] = useState<number>(0);
     const [reputation, setReputation] = useState<number>(0);
     const [userNfts, setUserNfts] = useState<number[]>([]);
+    const [nftUris, setNftUris] = useState<Record<number, string>>({});
     const [recentActivity, setRecentActivity] = useState<TransactionActivity[]>([]);
 
     useEffect(() => {
@@ -77,7 +78,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                     repAddr,
                     repName,
                     'get-reputation',
-                    [contractPrincipalCV(resolvedAddress)],
+                    [principalCV(resolvedAddress)],
                     'testnet'
                 );
                 if (repData && repData.value) {
@@ -95,33 +96,46 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         };
 
         const fetchUserNfts = async (ownerAddress: string) => {
-            // ... existing code ...
-            // In a real implementation with a standard NFT contract, we would query the balance or a specific map.
-            // Our simple contract doesn't have an easy "get-all-tokens-for-owner" function without an indexer.
-            // However, for this demo/hackathon scope, we can assume the specific NFT contract `stacks-hub-avatars` uses SIP-009.
-            // But actually, without an indexer like Hiro API, fetching ALL owned tokens requires iterative calls or specific contract support.
-            // LUCKILY, we can use the Hiro API which indexes NFT holdings!
-
             try {
                 const baseUrl = env.NEXT_PUBLIC_STACKS_NETWORK === 'mainnet' ? 'https://api.mainnet.hiro.so' : 'https://api.testnet.hiro.so';
+                const contractId = env.NEXT_PUBLIC_STACKS_NETWORK === 'mainnet' ? CONTRACTS.MAINNET.AVATARS : CONTRACTS.TESTNET.AVATARS;
+
                 const res = await fetch(`${baseUrl}/extended/v1/tokens/nft/holdings?principal=${ownerAddress}&limit=50`);
                 if (res.ok) {
                     const data = await res.json();
-                    // Filter for our specific contract
-                    const contractId = env.NEXT_PUBLIC_STACKS_NETWORK === 'mainnet' ? CONTRACTS.MAINNET.AVATARS : CONTRACTS.TESTNET.AVATARS;
 
                     const myAvatars = data.results
                         .filter((nft: any) => nft.asset_identifier.startsWith(contractId))
                         .map((nft: any) => {
-                            // Value repr is typically "uint(1)"
-                            // We need to extract the ID.
-                            // Hiro API 'value.repr' is what we want.
                             const match = nft.value.repr.match(/uint\((\d+)\)/);
                             return match ? parseInt(match[1]) : 0;
                         })
                         .filter((id: number) => id > 0);
 
                     setUserNfts(myAvatars);
+
+                    // Fetch URIs for each NFT found
+                    const uris: Record<number, string> = {};
+                    const [cAddr, cName] = contractId.split('.');
+
+                    await Promise.all(myAvatars.map(async (id: number) => {
+                        try {
+                            const uriData = await readContract(
+                                cAddr,
+                                cName,
+                                'get-token-uri',
+                                [uintCV(id)],
+                                'testnet'
+                            );
+                            // uriData is (ok (some "url")) or (ok none)
+                            if (uriData?.value?.value) {
+                                uris[id] = uriData.value.value;
+                            }
+                        } catch (e) {
+                            console.error(`Failed to fetch URI for token ${id}`, e);
+                        }
+                    }));
+                    setNftUris(uris);
                 }
             } catch (e) {
                 console.error("Failed to fetch nfts", e);
@@ -283,7 +297,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                                         <Card key={nftId} className="overflow-hidden hover:shadow-md transition-all">
                                             <div className="aspect-square relative bg-secondary/20 p-4 flex items-center justify-center">
                                                 <img
-                                                    src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${nftId}`}
+                                                    src={nftUris[nftId] || `https://api.dicebear.com/9.x/adventurer/svg?seed=${nftId}`}
                                                     alt={`Avatar #${nftId}`}
                                                     className="w-full h-full object-contain"
                                                 />
