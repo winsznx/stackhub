@@ -15,6 +15,7 @@ import {
 } from "@/ui/dropdown-menu"
 import { LogOut, User as UserIcon, ChevronDown } from "lucide-react"
 import Link from "next/link"
+import { Avatar, AvatarFallback, AvatarImage } from "@/ui/avatar"
 
 export function ConnectWalletButton() {
     const { user, connectWallet, disconnectWallet, isMounted } = useWallet();
@@ -32,7 +33,11 @@ export function ConnectWalletButton() {
         return (
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2">
+                    <Button variant="outline" className="gap-2 pl-2">
+                        <Avatar className="h-6 w-6">
+                            <AvatarImage src={user.avatarUrl || `https://api.dicebear.com/9.x/adventurer/svg?seed=${user.address}`} />
+                            <AvatarFallback>{(user.btcName || user.address)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                        </Avatar>
                         {user.btcName || truncateAddress(user.address)}
                         <ChevronDown className="h-4 w-4 opacity-50" />
                     </Button>

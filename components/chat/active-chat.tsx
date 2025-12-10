@@ -86,7 +86,53 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
     const userSession = getUserSession();
 
     const currentMessages = messages[conversationId] || [];
-    const displayName = conversationId.startsWith('SP') ? 'muneeb.btc' : conversationId;
+    const [conversationDetails, setConversationDetails] = useState<any>(null);
+
+    // Fetch Details and History
+    useEffect(() => {
+        if (!conversationId || !user?.address) return;
+
+        const fetchData = async () => {
+            try {
+                // Fetch Details
+                const resDetails = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/chat/${conversationId}/details`);
+                if (resDetails.ok) {
+                    setConversationDetails(await resDetails.json());
+                }
+
+                // Fetch History
+                const resHistory = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/chat/${conversationId}/messages`);
+                if (resHistory.ok) {
+                    const history = await resHistory.json();
+                    // Populate store (avoid duplicates?)
+                    // For now we just iterate and add if not exists, or verify implementation of addMessage
+                    history.forEach((m: any) => {
+                        addMessage(conversationId, {
+                            id: m.id,
+                            senderAddress: m.senderAddress,
+                            recipientAddress: conversationId, // Group ID
+                            content: m.content,
+                            timestamp: new Date(m.createdAt).getTime(),
+                            isEncrypted: m.isEncrypted,
+                            status: 'sent'
+                        });
+                    });
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        fetchData();
+    }, [conversationId, user?.address, addMessage]);
+
+    const acceptChat = async () => {
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/chat/${conversationId}/accept`, { method: 'POST' });
+            setConversationDetails({ ...conversationDetails, status: 'ACTIVE' });
+        } catch (e) {
+            console.error(e);
+        }
+    }
 
     // Derive My Public Key on Mount
     useEffect(() => {
@@ -99,6 +145,9 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
             }
         }
     }, []);
+
+    const otherMember = conversationDetails?.participants?.find((p: any) => p.address !== user?.address);
+    const displayName = otherMember?.name || otherMember?.address || conversationId;
 
     // Handshake: Emit Key on Join
     useEffect(() => {
@@ -220,13 +269,20 @@ export function ActiveChat({ conversationId }: ActiveChatProps) {
                         </h3>
                         <div className="flex items-center gap-1.5">
                             <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${conversationDetails?.status === 'REQUESTED' ? 'bg-amber-400' : 'bg-green-400'}`}></span>
+                                <span className={`relative inline-flex rounded-full h-2 w-2 ${conversationDetails?.status === 'REQUESTED' ? 'bg-amber-500' : 'bg-green-500'}`}></span>
                             </span>
-                            <p className="text-xs text-muted-foreground">Online</p>
+                            <p className="text-xs text-muted-foreground">{conversationDetails?.status === 'REQUESTED' ? 'Request Pending' : 'Online'}</p>
                         </div>
                     </div>
                 </div>
+
+                {conversationDetails?.status === 'REQUESTED' && (
+                    <Button size="sm" onClick={acceptChat} className="bg-primary hover:bg-primary/90 text-white ml-auto mr-4">
+                        Accept Request
+                    </Button>
+                )}
+
                 <div className="flex items-center gap-1">
                     <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary">
                         <Phone className="h-5 w-5" />

@@ -5,12 +5,10 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Rocket, Loader2, CheckCircle2, ArrowRight, ExternalLink } from 'lucide-react';
+import { Rocket, Loader2, CheckCircle2, ArrowRight, ExternalLink, Github, Lock, Clock } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
-import { generateSip010Contract, CONTRACTS } from '@/lib/contracts';
+import { generateSip010Contract, CONTRACTS, launchToken, getBitcoinBlockHeight } from '@/lib/contracts';
 import { getUserSession } from '@/lib/stacks-client';
-import { openContractCall } from '@stacks/connect';
-import { contractPrincipalCV, stringAsciiCV, uintCV } from '@stacks/transactions';
 import { StacksTestnet } from '@stacks/network';
 
 import { Button } from '@/ui/button';
@@ -26,6 +24,7 @@ import {
 import { Input } from '@/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/ui/card';
 import { useLaunchpadStore } from '@/store/useLaunchpadStore';
+import { Badge } from '@/ui/badge';
 
 const toast = (msg: string) => alert(msg);
 
@@ -35,6 +34,10 @@ const formSchema = z.object({
     decimals: z.coerce.number().min(0).max(18),
     supply: z.coerce.number().positive(),
     uri: z.string().url().optional().or(z.literal('')),
+    githubUrl: z.string().url().optional().or(z.literal('')),
+    saleDurationBlocks: z.coerce.number().min(10), // ~1 day
+    vestingBlocks: z.coerce.number().min(0).optional(),
+    targetStx: z.coerce.number().min(100), // Target for graduation
 });
 
 interface DeployedTokenEnv {
@@ -45,6 +48,7 @@ interface DeployedTokenEnv {
 
 interface SavedToken extends DeployedTokenEnv {
     createdAt: number;
+    btcStartHeight?: number;
 }
 
 type DeployStep = 'FORM' | 'REGISTER' | 'DONE';
@@ -56,21 +60,30 @@ export default function ClientLaunchpad() {
     const [deployedToken, setDeployedToken] = useState<DeployedTokenEnv | null>(null);
     const [savedTokens, setSavedTokens] = useState<SavedToken[]>([]);
     const [isMounted, setIsMounted] = useState(false);
+    const [currentBtcHeight, setCurrentBtcHeight] = useState<number>(0);
 
     const { launchData, setLaunchData } = useLaunchpadStore();
 
     useEffect(() => {
         setIsMounted(true);
+        // Load Saved Tokens
         try {
             const stored = localStorage.getItem('stackshub_my_tokens');
             if (stored) setSavedTokens(JSON.parse(stored));
         } catch (e) {
             console.error("Failed to load saved tokens", e);
         }
+
+        // Fetch Bitcoin Height
+        getBitcoinBlockHeight().then(setCurrentBtcHeight).catch(console.error);
     }, []);
 
     const saveToken = (token: DeployedTokenEnv) => {
-        const newToken: SavedToken = { ...token, createdAt: Date.now() };
+        const newToken: SavedToken = {
+            ...token,
+            createdAt: Date.now(),
+            btcStartHeight: currentBtcHeight
+        };
         const updated = [newToken, ...savedTokens];
         setSavedTokens(updated);
         localStorage.setItem('stackshub_my_tokens', JSON.stringify(updated));
@@ -84,6 +97,10 @@ export default function ClientLaunchpad() {
             decimals: launchData.decimals || 6,
             supply: launchData.supply || 1000000,
             uri: "",
+            githubUrl: "",
+            saleDurationBlocks: 144,
+            vestingBlocks: 0,
+            targetStx: 50000,
         },
     });
 
@@ -99,6 +116,7 @@ export default function ClientLaunchpad() {
         }
 
         setIsDeploying(true);
+        // Generate the V2 Contract Code
         const code = generateSip010Contract(
             values.name,
             values.symbol,
@@ -113,8 +131,6 @@ export default function ClientLaunchpad() {
                 contractName: values.symbol.toLowerCase(),
                 codeBody: code,
                 onFinish: (data) => {
-                    // Assuming Testnet for now
-                    // For mainnet, we need to detect network
                     const address = userSession.loadUserData().profile.stxAddress.testnet;
                     const principal = `${address}.${values.symbol.toLowerCase()}`;
 
@@ -137,32 +153,33 @@ export default function ClientLaunchpad() {
         });
     }
 
-    function handleRegister() {
+    async function handleRegister() {
         if (!deployedToken) return;
 
-        const [launchpadAddress, launchpadName] = CONTRACTS.TESTNET.LAUNCHPAD.split('.');
-        const [tokenAddress, tokenName] = deployedToken.principal.split('.');
+        const values = form.getValues();
+        // Calculate End Height for Sale
+        // We use a slight buffer or the user provided duration
+        const endBurnHeight = currentBtcHeight + values.saleDurationBlocks;
 
-        openContractCall({
-            contractAddress: launchpadAddress,
-            contractName: launchpadName,
-            functionName: 'launch-token',
-            functionArgs: [
-                contractPrincipalCV(tokenAddress, tokenName),
-                stringAsciiCV(deployedToken.name),
-                stringAsciiCV(deployedToken.symbol),
-                uintCV(launchData.decimals || 6)
-            ],
-            network: new StacksTestnet(),
-            userSession: getUserSession(),
-            onFinish: (data) => {
-                saveToken(deployedToken);
-                setDeployStep('DONE');
-            },
-            onCancel: () => {
-                console.log("Registration cancelled");
-            }
-        });
+        try {
+            await launchToken(
+                deployedToken.name,
+                deployedToken.symbol,
+                values.decimals,
+                deployedToken.principal,
+                values.githubUrl || values.uri || "", // Use Github as metadata if provided
+                values.targetStx,
+                endBurnHeight
+            );
+            // We assume success if the promise resolves (actually openContractCall returns void mostly but triggers popup)
+            // But for UI flow we update step in onFinish callback inside `launchToken`.
+            // Wait, my `launchToken` wrapper returns a Promise that resolves on Finish.
+
+            saveToken(deployedToken);
+            setDeployStep('DONE');
+        } catch (e) {
+            console.error("Launch cancelled", e);
+        }
     }
 
     function handleReset() {
@@ -178,38 +195,43 @@ export default function ClientLaunchpad() {
         <div className="container max-w-4xl py-10 px-4 space-y-10">
             <div className="max-w-2xl mx-auto space-y-6">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Token Launchpad</h1>
-                    <p className="text-muted-foreground">
-                        Launch your own SIP-010 fungible token on Stacks in seconds.
+                    <div className="flex items-center justify-between">
+                        <h1 className="text-3xl font-bold tracking-tight">Bitcoin L2 Launchpad</h1>
+                        <Badge variant="outline" className="gap-2 px-3 py-1">
+                            <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.svg" className="w-4 h-4" alt="BTC" />
+                            Block Height: {currentBtcHeight > 0 ? currentBtcHeight : <Loader2 className="w-3 h-3 animate-spin" />}
+                        </Badge>
+                    </div>
+                    <p className="text-muted-foreground mt-2">
+                        Launch secure, Bitcoin-finality tokens on Stacks.
                     </p>
                 </div>
 
                 {deployStep === 'FORM' && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>1. Define Token</CardTitle>
+                            <CardTitle>1. Define Token & Security</CardTitle>
                             <CardDescription>
-                                Create the metadata and deploy the contract.
+                                Create your token with Proof-of-Code and Bitcoin time-locks.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <Form {...form}>
                                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                                    <FormField
-                                        control={form.control}
-                                        name="name"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Token Name</FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="e.g. Bitcoin Pepe" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-
                                     <div className="grid grid-cols-2 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                            name="name"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Token Name</FormLabel>
+                                                    <FormControl>
+                                                        <Input placeholder="e.g. Bitcoin Pepe" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
                                         <FormField
                                             control={form.control}
                                             name="symbol"
@@ -218,6 +240,22 @@ export default function ClientLaunchpad() {
                                                     <FormLabel>Symbol</FormLabel>
                                                     <FormControl>
                                                         <Input placeholder="e.g. PEPE" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                            name="supply"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Total Supply</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="number" {...field} />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
@@ -238,44 +276,78 @@ export default function ClientLaunchpad() {
                                         />
                                     </div>
 
-                                    <FormField
-                                        control={form.control}
-                                        name="supply"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Initial Supply</FormLabel>
-                                                <FormControl>
-                                                    <Input type="number" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    <div className="border-t pt-4 mt-4">
+                                        <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+                                            <Lock className="w-4 h-4" /> Security & Trust
+                                        </h3>
 
-                                    <FormField
-                                        control={form.control}
-                                        name="uri"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Metadata URI (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="https://..." {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                        <FormField
+                                            control={form.control}
+                                            name="githubUrl"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Proof Of Code (GitHub URL)</FormLabel>
+                                                    <FormControl>
+                                                        <div className="flex gap-2 items-center relative">
+                                                            <Github className="w-4 h-4 absolute left-3 text-muted-foreground" />
+                                                            <Input className="pl-9" placeholder="https://github.com/username/repo" {...field} />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Verified builders get higher reputation scores.
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                            name="saleDurationBlocks"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Sale Duration (BTC Blocks)</FormLabel>
+                                                    <FormControl>
+                                                        <div className="flex gap-2 items-center relative">
+                                                            <Clock className="w-4 h-4 absolute left-3 text-muted-foreground" />
+                                                            <Input className="pl-9" type="number" {...field} />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        144 blocks ≈ 24 hours
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="targetStx"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Graduation Target (STX)</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="number" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
 
                                     <Button type="submit" className="w-full" disabled={isDeploying}>
                                         {isDeploying ? (
                                             <>
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Deploying...
+                                                Deploying Contract...
                                             </>
                                         ) : (
                                             <>
                                                 <Rocket className="mr-2 h-4 w-4" />
-                                                Deploy Contract
+                                                Deploy & Launch
                                             </>
                                         )}
                                     </Button>
@@ -292,9 +364,13 @@ export default function ClientLaunchpad() {
                                 <CheckCircle2 className="h-6 w-6" />
                                 <span className="font-semibold">Contract Deployed</span>
                             </div>
-                            <CardTitle>2. Initialize Bonding Curve</CardTitle>
+                            <CardTitle>2. Activate on Bitcoin L2</CardTitle>
                             <CardDescription>
-                                Register <strong>{deployedToken.symbol}</strong> ({deployedToken.principal}) on the Launchpad to enable trading.
+                                Register <strong>{deployedToken.symbol}</strong> to the bonding curve.
+                                <br />
+                                <span className="text-xs text-muted-foreground">
+                                    Ends at Bitcoin Block #{currentBtcHeight + form.getValues().saleDurationBlocks}
+                                </span>
                             </CardDescription>
                         </CardHeader>
                         <CardFooter>
@@ -341,14 +417,22 @@ export default function ClientLaunchpad() {
                                 <CardHeader className="pb-3">
                                     <div className="flex justify-between items-start">
                                         <CardTitle className="text-lg">{token.name}</CardTitle>
-                                        <span className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                                        <Badge variant="secondary" className="text-xs">
                                             {token.symbol}
-                                        </span>
+                                        </Badge>
                                     </div>
                                     <CardDescription className="font-mono text-xs truncate" title={token.principal}>
                                         {token.principal}
                                     </CardDescription>
                                 </CardHeader>
+                                <CardContent className="pb-2">
+                                    {token.btcStartHeight && (
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.svg" className="w-3 h-3 grayscale opacity-50" />
+                                            From Block #{token.btcStartHeight}
+                                        </div>
+                                    )}
+                                </CardContent>
                                 <CardFooter className="bg-muted/50 p-3 pt-3">
                                     <Button asChild variant="ghost" size="sm" className="w-full justify-between">
                                         <Link href={`/token/${token.principal}`}>

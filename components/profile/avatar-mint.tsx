@@ -12,12 +12,15 @@ export function AvatarMint() {
     const [isMinting, setIsMinting] = useState(false);
 
     const handleMint = async () => {
-        if (!user?.isAuthenticated) return;
+        if (!user?.isAuthenticated || !user.address) return;
+
+        // Use user address as seed for consistency
+        const seed = user.address;
+        const uri = `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}`;
 
         setIsMinting(true);
         try {
-            await mintAvatar('testnet'); // Default to testnet for now
-            // In a real app, we'd listen for the tx to confirm
+            await mintAvatar(uri, 'testnet');
         } catch (e) {
             console.error(e);
         } finally {

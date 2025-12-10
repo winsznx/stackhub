@@ -7,7 +7,7 @@ import { Badge } from '@/ui/badge';
 import { Loader2, Zap } from 'lucide-react';
 import { mintAvatar, CONTRACTS } from '@/lib/contracts';
 import { useWallet } from '@/hooks/useWallet';
-import { fetchCallReadOnlyFunction, uintCV, cvToJSON } from '@stacks/transactions';
+import { uintCV, cvToJSON } from '@stacks/transactions';
 import { StacksTestnet, StacksMainnet } from '@stacks/network';
 import { env } from '@/lib/config';
 import { getStxBalance } from '@/lib/stacks';
@@ -33,30 +33,52 @@ export function Marketplace() {
 
     const fetchContractState = async () => {
         try {
-            const network = env.NEXT_PUBLIC_STACKS_NETWORK === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
-            // Polyfill fetch for network if missing
-            if (!(network as any).fetchFn) {
-                (network as any).fetchFn = fetch;
-            }
-
             const contractAddress = env.NEXT_PUBLIC_STACKS_NETWORK === 'mainnet' ? CONTRACTS.MAINNET.AVATARS : CONTRACTS.TESTNET.AVATARS;
+            console.log("[Marketplace] Fetching state from:", contractAddress);
             const [address, name] = contractAddress.split('.');
 
-            const result = await fetchCallReadOnlyFunction({
-                contractAddress: address,
-                contractName: name,
-                functionName: 'get-last-token-id',
-                functionArgs: [],
-                network: network as any,
-                senderAddress: address
+            // Direct API call to bypass library version conflict
+            const apiUrl = env.NEXT_PUBLIC_STACKS_NETWORK === 'mainnet'
+                ? 'https://api.mainnet.hiro.so'
+                : 'https://api.testnet.hiro.so';
+
+            const response = await fetch(`${apiUrl}/v2/contracts/call-read/${address}/${name}/get-last-token-id`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sender: address,
+                    arguments: []
+                })
             });
 
-            const json = cvToJSON(result);
-            if (json.value) {
-                setLastTokenId(parseInt(json.value.value));
+            if (!response.ok) {
+                throw new Error(`API returned ${response.status}`);
             }
-        } catch (e) {
+
+            const data = await response.json();
+            console.log("[Marketplace] API Data:", data);
+
+            if (data.okay && data.result) {
+                const { deserializeCV } = await import('@stacks/transactions');
+                const resultCV = deserializeCV(data.result);
+                const json = cvToJSON(resultCV);
+                console.log("[Marketplace] Parsed JSON:", json);
+
+                if (json.value) {
+                    const id = parseInt(json.value.value);
+                    console.log("[Marketplace] Last Token ID parsed:", id);
+                    if (!isNaN(id)) {
+                        setLastTokenId(id);
+                    }
+                }
+            }
+        } catch (e: any) {
             console.error("Failed to fetch contract state", e);
+            toast({
+                title: "Error Fetching Data",
+                description: e.message || "Failed to connect to Stacks node",
+                variant: "destructive"
+            });
         } finally {
             setIsLoading(false);
         }
@@ -79,7 +101,8 @@ export function Marketplace() {
             }
 
             setMintingId(id);
-            await mintAvatar(env.NEXT_PUBLIC_STACKS_NETWORK as any);
+            const uri = `https://api.dicebear.com/9.x/adventurer/svg?seed=stackshub-${id}`;
+            await mintAvatar(uri, env.NEXT_PUBLIC_STACKS_NETWORK as any);
             toast({
                 title: "Mint Transaction Sent",
                 description: "Your transaction has been broadcast to the network.",
