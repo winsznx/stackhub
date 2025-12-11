@@ -13,7 +13,6 @@ import { getSbtcBalance } from "@/lib/sbtc"
 import { SatTribute } from "@/components/wallet/sat-tribute"
 
 import { cvToJSON, uintCV, contractPrincipalCV, principalCV } from "@stacks/transactions"
-import { StacksMainnet, StacksTestnet } from "@stacks/network"
 import { env } from "@/lib/config"
 import { CONTRACTS } from "@/lib/contracts"
 

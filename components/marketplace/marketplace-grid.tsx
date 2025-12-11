@@ -8,7 +8,6 @@ import { Loader2, Zap } from 'lucide-react';
 import { mintAvatar, CONTRACTS } from '@/lib/contracts';
 import { useWallet } from '@/hooks/useWallet';
 import { uintCV, cvToJSON } from '@stacks/transactions';
-import { StacksTestnet, StacksMainnet } from '@stacks/network';
 import { env } from '@/lib/config';
 import { getStxBalance } from '@/lib/stacks';
 import { useToast } from '@/hooks/use-toast';

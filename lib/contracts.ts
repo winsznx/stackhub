@@ -1,5 +1,5 @@
 import { openContractCall } from '@stacks/connect';
-import { StacksTestnet, StacksMainnet } from '@stacks/network';
+import { STACKS_TESTNET, STACKS_MAINNET } from '@stacks/network';
 import { PostConditionMode, Pc, uintCV, stringAsciiCV, principalCV } from '@stacks/transactions';
 import { getUserSession } from './stacks-client';
 
@@ -27,7 +27,7 @@ const CONTRACT_NAME = 'stacks-hub-avatars';
 
 // Helper to get network config
 const getNetworkConfig = (networkType: 'testnet' | 'mainnet') => {
-  const network = networkType === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
+  const network = networkType === 'mainnet' ? STACKS_MAINNET : STACKS_TESTNET;
   const contracts = networkType === 'mainnet' ? CONTRACTS.MAINNET : CONTRACTS.TESTNET;
   const userAddress = getUserSession().loadUserData().profile.stxAddress[networkType];
   return { network, contracts, userAddress };
@@ -189,8 +189,10 @@ export async function claimVestedTokens(
 // --- Utils ---
 
 export async function getBitcoinBlockHeight(networkType: 'testnet' | 'mainnet' = 'testnet'): Promise<number> {
-  const network = networkType === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
-  const response = await fetch(`${network.coreApiUrl}/v2/info`);
+  const apiUrl = networkType === 'mainnet'
+    ? 'https://api.hiro.so'
+    : 'https://api.testnet.hiro.so';
+  const response = await fetch(`${apiUrl}/v2/info`);
   const data = await response.json();
   return data.burn_block_height;
 }

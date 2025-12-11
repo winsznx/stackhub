@@ -1,7 +1,7 @@
-import { StacksMainnet, StacksTestnet } from '@stacks/network';
+import { STACKS_MAINNET, STACKS_TESTNET } from '@stacks/network';
 
 const networkEnv = process.env.NEXT_PUBLIC_STACKS_NETWORK || 'testnet';
-export const network = networkEnv === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
+export const network = networkEnv === 'mainnet' ? STACKS_MAINNET : STACKS_TESTNET;
 
 export function truncateAddress(address: string) {
     if (!address) return '';

@@ -1,5 +1,5 @@
 import { openContractCall } from '@stacks/connect';
-import { StacksTestnet, StacksMainnet } from '@stacks/network';
+import { STACKS_TESTNET, STACKS_MAINNET } from '@stacks/network';
 import { uintCV, principalCV, stringAsciiCV, PostConditionMode, Pc, standardPrincipalCV } from '@stacks/transactions';
 import { getUserSession } from './stacks-client';
 import { readContract } from './stacks';
@@ -17,7 +17,7 @@ export interface SbtcTransferParams {
 
 export async function sendSbtcTransfer({ amount, recipient, memo, networkType = 'testnet' }: SbtcTransferParams) {
     const userSession = getUserSession();
-    const network = networkType === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
+    const network = networkType === 'mainnet' ? STACKS_MAINNET : STACKS_TESTNET;
     const contractAddress = networkType === 'mainnet' ? SBTC_CONTRACT_MAINNET : SBTC_CONTRACT_TESTNET;
     const [contractPrincipal, contractName] = contractAddress.split('.');
 

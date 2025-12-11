@@ -1,5 +1,5 @@
 import { STACKS_MAINNET, STACKS_TESTNET } from '@stacks/network';
-import { callReadOnlyFunction, standardPrincipalCV, cvToJSON } from '@stacks/transactions';
+import { fetchCallReadOnlyFunction, standardPrincipalCV, cvToJSON } from '@stacks/transactions';
 import { env } from '../config';
 
 // Configuration
@@ -26,12 +26,12 @@ export async function getSbtcBalance(address: string): Promise<number> {
     }
 
     try {
-        const result = await callReadOnlyFunction({
+        const result = await fetchCallReadOnlyFunction({
             contractAddress: SBTC_CONTRACT_ADDRESS,
             contractName: SBTC_CONTRACT_NAME,
             functionName: 'get-balance',
             functionArgs: [standardPrincipalCV(address)],
-            network: network as any,
+            network: network,
             senderAddress: address,
         });
 

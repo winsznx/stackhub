@@ -9,7 +9,6 @@ import { Rocket, Loader2, CheckCircle2, ArrowRight, ExternalLink, Github, Lock, 
 import { useWallet } from '@/hooks/useWallet';
 import { generateSip010Contract, CONTRACTS, launchToken, getBitcoinBlockHeight } from '@/lib/contracts';
 import { getUserSession } from '@/lib/stacks-client';
-import { StacksTestnet } from '@stacks/network';
 
 import { Button } from '@/ui/button';
 import {
