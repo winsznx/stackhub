@@ -33,18 +33,19 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+const drizzle_kit_1 = require("drizzle-kit");
 const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 if (!process.env.DATABASE_URL) {
     console.warn("⚠️  DATABASE_URL is not set in environment variables. Defaulting to empty string which may cause errors.");
 }
-exports.default = {
+exports.default = (0, drizzle_kit_1.defineConfig)({
     schema: "./src/db/schema.ts",
     out: "./drizzle",
-    driver: 'pg',
+    dialect: 'postgresql',
     dbCredentials: {
-        connectionString: process.env.DATABASE_URL || "",
+        url: process.env.DATABASE_URL || "",
     },
     verbose: true,
     strict: true,
-};
+});
