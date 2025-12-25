@@ -3,6 +3,7 @@ id: 0
 name: Testnet deployment (Clarity 4)
 network: testnet
 stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstream.info:80"
 plan:
   batches:
     - id: 0
