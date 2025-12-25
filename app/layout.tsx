@@ -26,6 +26,7 @@ export const metadata: Metadata = {
 import { SiteHeader } from "@/components/site-header";
 import { RealtimeProvider } from "@/components/providers/realtime-provider";
 import { Toaster } from "@/ui/toaster";
+import { BitcoinProvider } from "@/lib/bitcoin-provider";
 
 export default function RootLayout({
   children,
@@ -37,11 +38,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background text-foreground`}
       >
-        <RealtimeProvider>
-          <SiteHeader />
-          {children}
-          <Toaster />
-        </RealtimeProvider>
+        <BitcoinProvider>
+          <RealtimeProvider>
+            <SiteHeader />
+            {children}
+            <Toaster />
+          </RealtimeProvider>
+        </BitcoinProvider>
       </body>
     </html>
   );
