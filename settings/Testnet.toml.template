@@ -1,0 +1,7 @@
+[network]
+name = "testnet"
+stacks_node_rpc_address = "https://api.testnet.hiro.so"
+bitcoin_node_rpc_address = "http://blockstream.info:80"
+
+[accounts.deployer]
+mnemonic = "YOUR_SEED_PHRASE_HERE"
