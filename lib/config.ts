@@ -4,12 +4,16 @@ const configSchema = z.object({
     NEXT_PUBLIC_API_URL: z.string().url().default('http://localhost:3001'),
     NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
     NEXT_PUBLIC_STACKS_NETWORK: z.enum(['mainnet', 'testnet', 'devnet']).default('testnet'),
+    NEXT_PUBLIC_REOWN_PROJECT_ID: z.string().optional(),
+    NEXT_PUBLIC_BACKEND_URL: z.string().url().optional(),
 });
 
 const _env = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_STACKS_NETWORK: process.env.NEXT_PUBLIC_STACKS_NETWORK,
+    NEXT_PUBLIC_REOWN_PROJECT_ID: process.env.NEXT_PUBLIC_REOWN_PROJECT_ID,
+    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
 };
 
 const result = configSchema.safeParse(_env);
