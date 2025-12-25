@@ -20,29 +20,29 @@ export function SiteHeader() {
                     <Logo className="size-8" />
                     <span className="hidden md:inline-block">StacksHub</span>
                 </Link>
-                <nav className="flex items-center gap-1 md:gap-2 flex-1 overflow-x-auto no-scrollbar">
+                <nav className="flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar">
                     <Link href="/chat">
-                        <Button variant={isActive('/chat') ? "secondary" : "ghost"} size="sm" className="gap-2">
+                        <Button variant={isActive('/chat') ? "secondary" : "ghost"} size="sm" className="gap-2 px-2 sm:px-3">
                             <LayoutDashboard className="size-4" />
-                            Chat
+                            <span className="hidden sm:inline">Chat</span>
                         </Button>
                     </Link>
                     <Link href="/launchpad">
-                        <Button variant={isActive('/launchpad') ? "secondary" : "ghost"} size="sm" className="gap-2">
+                        <Button variant={isActive('/launchpad') ? "secondary" : "ghost"} size="sm" className="gap-2 px-2 sm:px-3">
                             <Rocket className="size-4" />
-                            Launchpad
+                            <span className="hidden sm:inline">Launchpad</span>
                         </Button>
                     </Link>
                     <Link href="/marketplace">
-                        <Button variant={isActive('/marketplace') ? "secondary" : "ghost"} size="sm" className="gap-2">
+                        <Button variant={isActive('/marketplace') ? "secondary" : "ghost"} size="sm" className="gap-2 px-2 sm:px-3">
                             <ShoppingBag className="size-4" />
-                            Marketplace
+                            <span className="hidden sm:inline">Marketplace</span>
                         </Button>
                     </Link>
                     <Link href="/settings">
-                        <Button variant={isActive('/settings') ? "secondary" : "ghost"} size="sm" className="gap-2">
+                        <Button variant={isActive('/settings') ? "secondary" : "ghost"} size="sm" className="gap-2 px-2 sm:px-3">
                             <Settings className="size-4" />
-                            Settings
+                            <span className="hidden sm:inline">Settings</span>
                         </Button>
                     </Link>
                 </nav>
